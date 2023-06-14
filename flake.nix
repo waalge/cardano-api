@@ -4,7 +4,11 @@
   inputs = {
     haskellNix.url = "github:input-output-hk/haskell.nix";
     nixpkgs.follows = "haskellNix/nixpkgs-unstable";
-    iohkNix.url = "github:input-output-hk/iohk-nix";
+    iohkNix = {
+      url = "github:input-output-hk/iohk-nix"; 
+      #url = "github:input-output-hk/iohk-nix?ref=86421fdd89b3af43fa716ccd07638f96c6ecd1e4";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     flake-utils.url = "github:hamishmack/flake-utils/hkm/nested-hydraJobs";
 
     cardano-mainnet-mirror.url = "github:input-output-hk/cardano-mainnet-mirror";
@@ -12,6 +16,10 @@
 
     CHaP.url = "github:input-output-hk/cardano-haskell-packages?ref=repo";
     CHaP.flake = false;
+    plutus = {
+      url = "github:input-output-hk/plutus?ref=b1fbf43f5a2677b8ad39e2208ca57395a807f3e7";
+      flake = false;
+    };
 
     # cicero
     tullia.url = "github:input-output-hk/tullia";
@@ -24,9 +32,9 @@
   outputs = inputs: let
     supportedSystems = [
       "x86_64-linux"
-      "x86_64-darwin"
-      "aarch64-linux"
-      "aarch64-darwin"
+      # "x86_64-darwin"
+      # "aarch64-linux"
+      # "aarch64-darwin"
     ];
   in
     inputs.flake-utils.lib.eachSystem supportedSystems (
@@ -68,6 +76,7 @@
           #
           inputMap = {
             "https://input-output-hk.github.io/cardano-haskell-packages" = inputs.CHaP;
+            "https://github.com/input-output-hk/plutus" = inputs.plutus;
           };
 
           # tools we want in our shell, from hackage
