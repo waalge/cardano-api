@@ -57,6 +57,8 @@ source-repository-package
 allow-newer: 
   , plutus-core
   , plutus-ledger-api
+  , cardano-ledger-shelley
   , cardano-ledger-alonzo
   , cardano-ledger-babbage
+  , cardano-ledger-conway
   , prettyprinter-configurable
