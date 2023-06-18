@@ -1,5 +1,70 @@
 # Changelog for cardano-api
 
+## 8.5.2.0
+
+- New `requireShelleyBasedEra` function
+  (feature; compatible)
+  [PR 58](https://github.com/input-output-hk/cardano-api/pull/58)
+
+## 8.5.1.0
+
+- New `queryEpoch` function
+  (feature; compatible)
+  [PR 56](https://github.com/input-output-hk/cardano-api/pull/56)
+
+## 8.5.0.0
+
+- New queries:
+  * `queryCurrentEpochState`
+  * `queryDebugLedgerState`
+  * `queryGenesisParameters`
+  * `queryPoolDistribution`
+  * `queryPoolState`
+  * `queryProtocolParameters`
+  * `queryProtocolParametersUpdate`
+  * `queryProtocolState`
+  * `queryStakeAddresses`
+  * `queryStakeDistribution`
+  * `queryStakePoolParameters`
+  * `queryStakeSnapshot`
+  Deprecate:
+  * `queryPparams`
+  (feature; breaking)
+  [PR 53](https://github.com/input-output-hk/cardano-api/pull/53)
+
+## 8.4.0.0
+
+- Simplify `queryStateForBalancedTx` such that:
+  * It no longer invokes `executeQueryCardanoMode` `queryNodeLocalState, allowing it to run over a single connection
+  * It no longer takes `socketPath` and `networkId` parameters
+  (feature; breaking)
+  [PR 47](https://github.com/input-output-hk/cardano-api/pull/47)
+
+## 8.3.0.0
+
+- This module exports our query API as functions.  It is intended to replace our query API as the public API.
+
+  Having functions as our public API rather than data allows us to export non-primitive functions as well as
+  afford us the ability to refactor our query data types without breaking user code
+  (feature; compatible)
+  [PR 48](https://github.com/input-output-hk/cardano-api/pull/48)
+
+- Generate fields only if they make sense for the given era.
+  Changes:
+  - New `Cardano.Api.Feature` module
+  - New`FeatureInEra` type class
+  - New `FeatureValue` type
+  - New functions:
+    - `genFeatureValueInEra`
+    - `featureInShelleyBasedEra`
+    - `isFeatureValue`
+    - `valueOrDefault`
+    - `asFeatureValue`
+    - `asFeatureValueInShelleyBasedEra`
+  - `genProtocolParameters` and `genValidProtocolParameters` functions take additional `era` argument
+  (feature; breaking)
+  [PR 40](https://github.com/input-output-hk/cardano-api/pull/40)
+
 ## 8.2.0.0
 
 - Changes:

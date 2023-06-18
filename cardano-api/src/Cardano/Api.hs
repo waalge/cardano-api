@@ -34,6 +34,9 @@ module Cardano.Api (
     cardanoEraStyle,
     shelleyBasedToCardanoEra,
 
+    -- * Assertions on era
+    requireShelleyBasedEra,
+
     -- ** IO
     File(..),
     FileDirection(..),
@@ -813,7 +816,6 @@ module Cardano.Api (
     LocalStateQueryExpr,
     executeLocalStateQueryExpr,
     queryExpr,
-    determineEraExpr,
 
     chainPointToSlotNo,
     chainPointToHeaderHash,
@@ -850,6 +852,31 @@ module Cardano.Api (
 
     -- ** CLI option parsing
     bounded,
+
+    -- ** Query expressions
+    queryChainBlockNo,
+    queryChainPoint,
+    queryCurrentEpochState,
+    queryCurrentEra,
+    queryDebugLedgerState,
+    queryEpoch,
+    queryEraHistory,
+    queryGenesisParameters,
+    queryPoolDistribution,
+    queryPoolState,
+    queryPparams,
+    queryProtocolParameters,
+    queryProtocolParametersUpdate,
+    queryProtocolState,
+    queryStakeAddresses,
+    queryStakeDelegDeposits,
+    queryStakeDistribution,
+    queryStakePoolParameters,
+    queryStakePools,
+    queryStakeSnapshot,
+    querySystemStart,
+    queryUtxo,
+    determineEraExpr,
   ) where
 
 import           Cardano.Api.Address
@@ -880,11 +907,12 @@ import           Cardano.Api.LedgerEvent
 import           Cardano.Api.LedgerState
 import           Cardano.Api.Modes
 import           Cardano.Api.NetworkId
-import           Cardano.Api.Orphans ()
 import           Cardano.Api.OperationalCertificate
+import           Cardano.Api.Orphans ()
 import           Cardano.Api.Protocol
 import           Cardano.Api.ProtocolParameters
 import           Cardano.Api.Query hiding (LedgerState (..))
+import           Cardano.Api.Query.Expr
 import           Cardano.Api.Script
 import           Cardano.Api.ScriptData
 import           Cardano.Api.SerialiseBech32

@@ -20,10 +20,12 @@ import           Cardano.Api.Convenience.Constraints
 import           Cardano.Api.Eras
 import           Cardano.Api.IO
 import           Cardano.Api.IPC
+import           Cardano.Api.IPC.Monad
 import           Cardano.Api.Modes
 import           Cardano.Api.NetworkId
 import           Cardano.Api.ProtocolParameters
 import           Cardano.Api.Query
+import           Cardano.Api.Query.Expr
 import           Cardano.Api.TxBody
 import           Cardano.Api.Utils
 import           Cardano.Api.Value
@@ -31,9 +33,8 @@ import           Cardano.Api.Value
 import           Ouroboros.Consensus.HardFork.Combinator.AcrossEras (EraMismatch (..))
 
 import           Control.Monad.Trans (MonadTrans (..))
-import           Control.Monad.Trans.Except (ExceptT (..), except, runExceptT)
-import           Control.Monad.Trans.Except.Extra (firstExceptT, hoistMaybe, left, onLeft,
-                   onNothing)
+import           Control.Monad.Trans.Except (ExceptT (..), runExceptT)
+import           Control.Monad.Trans.Except.Extra (left, onLeft, onNothing)
 import           Data.Function ((&))
 import           Data.Map (Map)
 import           Data.Maybe (mapMaybe)
@@ -46,6 +47,7 @@ data QueryConvenienceError
   | QueryEraMismatch EraMismatch
   | ByronEraNotSupported
   | EraConsensusModeMismatch !AnyConsensusMode !AnyCardanoEra
+  | QceUnsupportedNtcVersion !UnsupportedNtcVersionError
 
 renderQueryConvenienceError :: QueryConvenienceError -> Text
 renderQueryConvenienceError (AcqFailure e) =
@@ -59,58 +61,65 @@ renderQueryConvenienceError ByronEraNotSupported =
 renderQueryConvenienceError (EraConsensusModeMismatch cMode anyCEra) =
   "Consensus mode and era mismatch. Consensus mode: " <> textShow cMode <>
   " Era: " <> textShow anyCEra
+renderQueryConvenienceError (QceUnsupportedNtcVersion (UnsupportedNtcVersionError minNtcVersion ntcVersion)) =
+  "Unsupported feature for the node-to-client protocol version.\n" <>
+  "This query requires at least " <> textShow minNtcVersion <> " but the node negotiated " <> textShow ntcVersion <> ".\n" <>
+  "Later node versions support later protocol versions (but development protocol versions are not enabled in the node by default)."
 
 -- | A convenience function to query the relevant information, from
 -- the local node, for Cardano.Api.Convenience.Construction.constructBalancedTx
-queryStateForBalancedTx
-  :: SocketPath
-  -> CardanoEra era
-  -> NetworkId
+queryStateForBalancedTx :: ()
+  => CardanoEra era
   -> [TxIn]
   -> [Certificate]
-  -> IO (Either QueryConvenienceError ( UTxO era
-                                      , ProtocolParameters
-                                      , EraHistory CardanoMode
-                                      , SystemStart
-                                      , Set PoolId
-                                      , Map StakeCredential Lovelace
-                                      )
-        )
-queryStateForBalancedTx socketPath era networkId allTxIns certs = runExceptT $ do
-  let cModeParams = CardanoModeParams $ EpochSlots 21600
-      localNodeConnInfo = LocalNodeConnectInfo cModeParams networkId socketPath
+  -> LocalStateQueryExpr block point (QueryInMode CardanoMode) r IO
+      ( Either
+          QueryConvenienceError
+          ( UTxO era
+          , ProtocolParameters
+          , EraHistory CardanoMode
+          , SystemStart
+          , Set PoolId
+          , Map StakeCredential Lovelace))
+queryStateForBalancedTx era allTxIns certs = runExceptT $ do
+  sbe <- requireShelleyBasedEra era
+    & onNothing (left ByronEraNotSupported)
 
-  qSbe <- except $ getSbe $ cardanoEraStyle era
+  qeInMode <- pure (toEraInMode era CardanoMode)
+    & onNothing (left (EraConsensusModeMismatch (AnyConsensusMode CardanoMode) (getIsCardanoEraConstraint era $ AnyCardanoEra era)))
 
-  qeInMode <- toEraInMode era CardanoMode
-    & hoistMaybe (EraConsensusModeMismatch (AnyConsensusMode CardanoMode) (getIsCardanoEraConstraint era $ AnyCardanoEra era))
-
-  -- Queries
-  let utxoQuery = QueryInEra qeInMode $ QueryInShelleyBasedEra qSbe
-                    $ QueryUTxO (QueryUTxOByTxIn (Set.fromList allTxIns))
-      pparamsQuery = QueryInEra qeInMode
-                        $ QueryInShelleyBasedEra qSbe QueryProtocolParameters
-      eraHistoryQuery = QueryEraHistory CardanoModeIsMultiEra
-      systemStartQuery = QuerySystemStart
-      stakePoolsQuery = QueryInEra qeInMode . QueryInShelleyBasedEra qSbe $ QueryStakePools
-      stakeCreds = Set.fromList $ flip mapMaybe certs $ \case
+  let stakeCreds = Set.fromList $ flip mapMaybe certs $ \case
         StakeAddressDeregistrationCertificate cred -> Just cred
         _ -> Nothing
-      stakeDelegDepositsQuery =
-        QueryInEra qeInMode . QueryInShelleyBasedEra qSbe $ QueryStakeDelegDeposits stakeCreds
 
   -- Query execution
-  utxo <- ExceptT $ executeQueryCardanoMode socketPath era networkId utxoQuery
-  pparams <- ExceptT $ executeQueryCardanoMode socketPath era networkId pparamsQuery
-  eraHistory <- firstExceptT AcqFailure $ ExceptT $ queryNodeLocalState localNodeConnInfo Nothing eraHistoryQuery
-  systemStart <- firstExceptT AcqFailure $ ExceptT $ queryNodeLocalState localNodeConnInfo Nothing systemStartQuery
-  stakePools <- ExceptT $ executeQueryCardanoMode socketPath era networkId stakePoolsQuery
+  utxo <- lift (queryUtxo qeInMode sbe (QueryUTxOByTxIn (Set.fromList allTxIns)))
+    & onLeft (left . QceUnsupportedNtcVersion)
+    & onLeft (left . QueryEraMismatch)
+
+  pparams <- lift (queryProtocolParameters qeInMode sbe)
+    & onLeft (left . QceUnsupportedNtcVersion)
+    & onLeft (left . QueryEraMismatch)
+
+  eraHistory <- lift queryEraHistory
+    & onLeft (left . QceUnsupportedNtcVersion)
+
+  systemStart <- lift querySystemStart
+    & onLeft (left . QceUnsupportedNtcVersion)
+
+  stakePools <- lift (queryStakePools qeInMode sbe)
+    & onLeft (left . QceUnsupportedNtcVersion)
+    & onLeft (left . QueryEraMismatch)
+
   stakeDelegDeposits <-
     if null stakeCreds
-    then pure mempty
-    else ExceptT $ executeQueryCardanoMode socketPath era networkId stakeDelegDepositsQuery
+      then pure mempty
+      else do
+        lift (queryStakeDelegDeposits qeInMode sbe stakeCreds)
+          & onLeft (left . QceUnsupportedNtcVersion)
+          & onLeft (left . QueryEraMismatch)
 
-  return (utxo, pparams, eraHistory, systemStart, stakePools, stakeDelegDeposits)
+  pure (utxo, pparams, eraHistory, systemStart, stakePools, stakeDelegDeposits)
 
 -- | Query the node to determine which era it is in.
 determineEra
@@ -124,10 +133,6 @@ determineEra cModeParams localNodeConnInfo =
     CardanoMode ->
       queryNodeLocalState localNodeConnInfo Nothing
         $ QueryCurrentEra CardanoModeIsMultiEra
-
-getSbe :: CardanoEraStyle era -> Either QueryConvenienceError (ShelleyBasedEra era)
-getSbe LegacyByronEra = Left ByronEraNotSupported
-getSbe (ShelleyBasedEra sbe) = return sbe
 
 -- | Execute a query against the local node. The local
 -- node must be in CardanoMode.
