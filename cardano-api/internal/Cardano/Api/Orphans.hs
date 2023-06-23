@@ -7,7 +7,6 @@
 module Cardano.Api.Orphans () where
 
 import           Cardano.Binary (DecoderError (..))
-import qualified Cardano.Ledger.Alonzo.Scripts as Ledger
 import qualified Cardano.Ledger.Crypto as Crypto
 import qualified Ouroboros.Consensus.Shelley.Ledger.Query as Consensus
 
